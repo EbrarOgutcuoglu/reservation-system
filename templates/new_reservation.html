@@ -32,7 +32,8 @@
 
     <div id="timePane" class="wizard-pane">
         <h2 style="text-align: center;">Please select your reservation time.</h2>
-        <p class="muted" style="text-align: center;">Full slots cannot be selected.</p>
+        <p class="muted" style="text-align: center;">Full or selected slots cannot be selected by another user.</p>
+        <p id="holdTimer" class="muted" style="text-align: center;"></p>
         <div id="slotList" class="slot-grid"></div>
 
         <label>Note</label>
@@ -54,6 +55,10 @@
     let calendarDate = new Date();
     let selectedSlot = "";
     let latestSlots = [];
+    let holdTimeout = null;
+    let holdInterval = null;
+    let holdExpiresAt = null;
+    let refreshInterval = null;
 
     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const monthNames = [
@@ -102,7 +107,8 @@
         renderCalendar();
     }
 
-    function selectDate(year, month, day) {
+    async function selectDate(year, month, day) {
+        await releaseHold();
         selectedDate = new Date(year, month, day);
         selectedSlot = "";
         updateStepText();
@@ -152,22 +158,38 @@
         latestSlots = slots;
         document.getElementById("slotList").innerHTML = slots.map((slot, index) => `
             <button
-                class="slot-card ${slot.is_full ? "full" : ""} ${selectedSlot === slot.key ? "selected" : ""}"
+                class="slot-card ${slot.is_full ? "full" : ""} ${slot.is_selected && !slot.held_by_me ? "held" : ""} ${selectedSlot === slot.key || slot.held_by_me ? "selected" : ""}"
                 type="button"
-                ${slot.is_full ? "disabled" : ""}
+                ${slot.is_full || (slot.is_selected && !slot.held_by_me) ? "disabled" : ""}
                 onclick="selectSlot('${slot.key}')"
             >
                 <span>${index + 1}. Session</span>
                 <strong>${slot.label}</strong>
-                <span>${slot.is_full ? "Full" : "Available"}</span>
+                <span>${slot.is_full ? "Full" : slot.is_selected ? "Selected" : "Available"}</span>
             </button>
         `).join("");
     }
 
-    function selectSlot(slotKey) {
-        selectedSlot = slotKey;
-        updateStepText();
-        renderSlots(latestSlots);
+    async function selectSlot(slotKey) {
+        try {
+            const data = await apiFetch("/api/holds/", {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    date: dateValue(selectedDate),
+                    slot: slotKey
+                })
+            });
+            selectedSlot = slotKey;
+            holdExpiresAt = new Date(data.hold.expires_at);
+            startHoldTimer();
+            showMessage("reservationMessage", "This time is selected for 10 minutes.", "success");
+            loadAvailability();
+        } catch (error) {
+            selectedSlot = "";
+            showMessage("reservationMessage", error.message, "error");
+            loadAvailability();
+        }
     }
 
     async function loadAvailability() {
@@ -177,8 +199,14 @@
                 headers: authHeaders()
             });
             const selected = data.slots.find(slot => slot.key === selectedSlot);
-            if (selected && selected.is_full) {
+            if (selected && (selected.is_full || (selected.is_selected && !selected.held_by_me))) {
                 selectedSlot = "";
+            }
+            const myHold = data.slots.find(slot => slot.held_by_me);
+            if (myHold) {
+                selectedSlot = myHold.key;
+                holdExpiresAt = new Date(myHold.hold_expires_at);
+                startHoldTimer();
             }
             renderSlots(data.slots);
             updateStepText();
@@ -205,6 +233,7 @@
                 })
             });
             selectedSlot = "";
+            clearHoldTimer();
             showMessage("reservationMessage", "Reservation confirmed.", "success");
             loadAvailability();
         } catch (error) {
@@ -219,9 +248,81 @@
         document.getElementById("timeStepText").textContent = slot ? slot.label : "";
     }
 
+    function startHoldTimer() {
+        clearHoldTimer();
+        if (!holdExpiresAt) {
+            return;
+        }
+
+        holdInterval = setInterval(updateHoldTimer, 1000);
+        holdTimeout = setTimeout(async function () {
+            await releaseHold();
+            window.location.href = "/";
+        }, Math.max(0, holdExpiresAt.getTime() - Date.now()));
+        updateHoldTimer();
+    }
+
+    function clearHoldTimer() {
+        clearTimeout(holdTimeout);
+        clearInterval(holdInterval);
+        holdTimeout = null;
+        holdInterval = null;
+        document.getElementById("holdTimer").textContent = "";
+    }
+
+    function updateHoldTimer() {
+        if (!holdExpiresAt) {
+            return;
+        }
+        const secondsLeft = Math.max(0, Math.ceil((holdExpiresAt.getTime() - Date.now()) / 1000));
+        const minutes = Math.floor(secondsLeft / 60);
+        const seconds = String(secondsLeft % 60).padStart(2, "0");
+        document.getElementById("holdTimer").textContent = selectedSlot
+            ? `Selected time expires in ${minutes}:${seconds}.`
+            : "";
+    }
+
+    async function releaseHold() {
+        if (!selectedSlot) {
+            return;
+        }
+        try {
+            await fetch("/api/holds/release/", {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    date: dateValue(selectedDate),
+                    slot: selectedSlot
+                })
+            });
+        } catch (error) {
+        }
+        selectedSlot = "";
+        holdExpiresAt = null;
+        clearHoldTimer();
+    }
+
+    window.addEventListener("beforeunload", function () {
+        if (!selectedSlot) {
+            return;
+        }
+        navigator.sendBeacon(
+            "/api/holds/release/?token=" + getToken(),
+            JSON.stringify({
+                date: dateValue(selectedDate),
+                slot: selectedSlot
+            })
+        );
+    });
+
     selectedDate = startOfDay(selectedDate);
     calendarDate = new Date(selectedDate);
     renderCalendar();
     updateStepText();
+    refreshInterval = setInterval(function () {
+        if (document.getElementById("timePane").classList.contains("active")) {
+            loadAvailability();
+        }
+    }, 10000);
 </script>
 {% endblock %}

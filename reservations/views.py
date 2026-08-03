@@ -17,6 +17,8 @@ from .services import (
     change_reservation_status,
     create_reservation,
     get_restaurant_availability,
+    hold_slot,
+    release_user_hold,
     update_reservation,
 )
 from .utils import api_error, api_response, read_json
@@ -132,9 +134,43 @@ def availability(request):
 
     date_value = request.GET.get("date")
     try:
-        return api_response({"slots": get_restaurant_availability(date_value)})
+        return api_response({"slots": get_restaurant_availability(date_value, request.user)})
     except ValueError as exc:
         return api_error(str(exc))
+
+
+@csrf_exempt
+@login_required
+def hold_reservation_slot(request):
+    if request.method != "POST":
+        return api_error("Method is not allowed.", 405)
+
+    data = read_json(request)
+    try:
+        hold = hold_slot(request.user, data.get("date"), data.get("slot"))
+        return api_response(
+            {
+                "hold": {
+                    "date": hold["date"],
+                    "slot": hold["slot"],
+                    "expires_at": hold["expires_at"].isoformat(),
+                }
+            },
+            201,
+        )
+    except ValueError as exc:
+        return api_error(str(exc))
+
+
+@csrf_exempt
+@login_required
+def release_reservation_hold(request):
+    if request.method != "POST":
+        return api_error("Method is not allowed.", 405)
+
+    data = read_json(request)
+    release_user_hold(request.user, data.get("date"), data.get("slot"))
+    return api_response({"message": "Hold released."})
 
 
 @csrf_exempt

@@ -69,6 +69,13 @@ class ReservationApiTests(TestCase):
             "slot": "09-12",
         }
 
+        hold_response = self.client.post(
+            "/api/holds/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            **self.auth_header(token),
+        )
+
         first_response = self.client.post(
             "/api/reservations/",
             data=json.dumps(payload),
@@ -90,9 +97,36 @@ class ReservationApiTests(TestCase):
             slot for slot in availability_response.json()["slots"]
             if slot["key"] == "09-12"
         ][0]
+        self.assertEqual(hold_response.status_code, 201)
         self.assertEqual(first_response.status_code, 201)
         self.assertEqual(second_response.status_code, 400)
         self.assertTrue(full_slot["is_full"])
+
+    def test_selected_slot_is_visible_before_confirm(self):
+        token = self.login()
+        payload = {
+            "date": "2026-08-03",
+            "slot": "12-15",
+        }
+
+        hold_response = self.client.post(
+            "/api/holds/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            **self.auth_header(token),
+        )
+        availability_response = self.client.get(
+            "/api/availability/?date=2026-08-03",
+            **self.auth_header(token),
+        )
+
+        selected_slot = [
+            slot for slot in availability_response.json()["slots"]
+            if slot["key"] == "12-15"
+        ][0]
+        self.assertEqual(hold_response.status_code, 201)
+        self.assertTrue(selected_slot["is_selected"])
+        self.assertTrue(selected_slot["held_by_me"])
 
     def test_admin_can_change_reservation_status(self):
         token = self.login("admin")
