@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Book a Table - Rezervem{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Rezervem is waiting for you.</h1>
+    <p>Select a date first, then choose an available time slot for your restaurant reservation.</p>
+</section>
+
+<section class="panel">
+    <div class="steps">
+        <div id="dateStep" class="step active clickable" onclick="showPane('date')">
+            Date
+            <div id="dateStepText" style="font-size: 18px; margin-top: 6px;"></div>
+        </div>
+        <div id="timeStep" class="step clickable" onclick="showPane('time')">
+            Time
+            <div id="timeStepText" style="font-size: 18px; margin-top: 6px;"></div>
+        </div>
+    </div>
+
+    <div id="datePane" class="wizard-pane active">
+        <h2 style="text-align: center;">Select a date to start your reservation.</h2>
+        <div class="calendar-head">
+            <button class="btn secondary" type="button" onclick="changeMonth(-1)">‹</button>
+            <div id="calendarTitle" class="calendar-title"></div>
+            <button class="btn secondary" type="button" onclick="changeMonth(1)">›</button>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+    </div>
+
+    <div id="timePane" class="wizard-pane">
+        <h2 style="text-align: center;">Please select your reservation time.</h2>
+        <p class="muted" style="text-align: center;">Full slots cannot be selected.</p>
+        <div id="slotList" class="slot-grid"></div>
+
+        <label>Note</label>
+        <textarea id="note" placeholder="Optional note"></textarea>
+
+        <div class="button-row">
+            <button class="btn" onclick="createReservation()">Confirm Reservation</button>
+            <button class="btn secondary" type="button" onclick="showPane('date')">Back to Date</button>
+            <a class="btn secondary" href="/reservations/">My Reservations</a>
+        </div>
+        <div id="reservationMessage" class="message"></div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let selectedDate = new Date();
+    let calendarDate = new Date();
+    let selectedSlot = "";
+    let latestSlots = [];
+
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+
+    function dateValue(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
+
+    function readableDate(date) {
+        return date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            weekday: "short"
+        });
+    }
+
+    function startOfDay(date) {
+        const nextDate = new Date(date);
+        nextDate.setHours(0, 0, 0, 0);
+        return nextDate;
+    }
+
+    function showPane(name) {
+        if (name === "time" && !selectedDate) {
+            return;
+        }
+
+        document.getElementById("datePane").classList.toggle("active", name === "date");
+        document.getElementById("timePane").classList.toggle("active", name === "time");
+        document.getElementById("dateStep").classList.toggle("active", name === "date");
+        document.getElementById("timeStep").classList.toggle("active", name === "time");
+
+        if (name === "time") {
+            loadAvailability();
+        }
+    }
+
+    function changeMonth(direction) {
+        calendarDate.setMonth(calendarDate.getMonth() + direction);
+        renderCalendar();
+    }
+
+    function selectDate(year, month, day) {
+        selectedDate = new Date(year, month, day);
+        selectedSlot = "";
+        updateStepText();
+        renderCalendar();
+        showPane("time");
+    }
+
+    function renderCalendar() {
+        const year = calendarDate.getFullYear();
+        const month = calendarDate.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startOffset = (firstDay.getDay() + 6) % 7;
+        const today = startOfDay(new Date());
+        let html = dayNames.map(name => `<div class="day-name">${name}</div>`).join("");
+
+        for (let index = 0; index < startOffset; index++) {
+            html += "<div></div>";
+        }
+
+        for (let day = 1; day <= lastDay.getDate(); day++) {
+            const current = new Date(year, month, day);
+            const isPast = startOfDay(current) < today;
+            const isSelected = dateValue(current) === dateValue(selectedDate);
+            const isToday = dateValue(current) === dateValue(today);
+            const className = [
+                "day-btn",
+                isSelected ? "selected" : "",
+                isToday && !isSelected ? "today" : "",
+                isPast ? "past" : ""
+            ].join(" ");
+            html += `
+                <button
+                    type="button"
+                    class="${className}"
+                    ${isPast ? "disabled" : ""}
+                    onclick="selectDate(${year}, ${month}, ${day})"
+                >${day}</button>
+            `;
+        }
+
+        document.getElementById("calendarTitle").textContent = `${monthNames[month]} ${year}`;
+        document.getElementById("calendarGrid").innerHTML = html;
+    }
+
+    function renderSlots(slots) {
+        latestSlots = slots;
+        document.getElementById("slotList").innerHTML = slots.map((slot, index) => `
+            <button
+                class="slot-card ${slot.is_full ? "full" : ""} ${selectedSlot === slot.key ? "selected" : ""}"
+                type="button"
+                ${slot.is_full ? "disabled" : ""}
+                onclick="selectSlot('${slot.key}')"
+            >
+                <span>${index + 1}. Session</span>
+                <strong>${slot.label}</strong>
+                <span>${slot.is_full ? "Full" : "Available"}</span>
+            </button>
+        `).join("");
+    }
+
+    function selectSlot(slotKey) {
+        selectedSlot = slotKey;
+        updateStepText();
+        renderSlots(latestSlots);
+    }
+
+    async function loadAvailability() {
+        if (!requireLogin()) return;
+        try {
+            const data = await apiFetch("/api/availability/?date=" + dateValue(selectedDate), {
+                headers: authHeaders()
+            });
+            const selected = data.slots.find(slot => slot.key === selectedSlot);
+            if (selected && selected.is_full) {
+                selectedSlot = "";
+            }
+            renderSlots(data.slots);
+            updateStepText();
+        } catch (error) {
+            showMessage("reservationMessage", error.message, "error");
+        }
+    }
+
+    async function createReservation() {
+        if (!requireLogin()) return;
+        if (!selectedSlot) {
+            showMessage("reservationMessage", "Please select an available time.", "error");
+            return;
+        }
+
+        try {
+            await apiFetch("/api/reservations/", {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    date: dateValue(selectedDate),
+                    slot: selectedSlot,
+                    note: document.getElementById("note").value
+                })
+            });
+            selectedSlot = "";
+            showMessage("reservationMessage", "Reservation confirmed.", "success");
+            loadAvailability();
+        } catch (error) {
+            showMessage("reservationMessage", error.message, "error");
+            loadAvailability();
+        }
+    }
+
+    function updateStepText() {
+        const slot = latestSlots.find(item => item.key === selectedSlot);
+        document.getElementById("dateStepText").textContent = readableDate(selectedDate);
+        document.getElementById("timeStepText").textContent = slot ? slot.label : "";
+    }
+
+    selectedDate = startOfDay(selectedDate);
+    calendarDate = new Date(selectedDate);
+    renderCalendar();
+    updateStepText();
+</script>
+{% endblock %}

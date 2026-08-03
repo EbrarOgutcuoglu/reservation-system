@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Live Events - Reservation System{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Live Events</h1>
+    <p>Reservation changes appear here with Server-Sent Events.</p>
+</section>
+
+<section class="panel">
+    <div class="button-row">
+        <button class="btn" onclick="connectEvents()">Connect</button>
+        <a class="btn secondary" href="/reservations/new/">Create Reservation</a>
+    </div>
+    <div id="eventsBox" class="event-box" style="margin-top: 16px;">Not connected.</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let eventSource = null;
+
+    function writeEvent(text) {
+        const box = document.getElementById("eventsBox");
+        box.textContent += "\n" + text;
+    }
+
+    function connectEvents() {
+        if (!requireLogin()) return;
+        if (eventSource) {
+            eventSource.close();
+        }
+        document.getElementById("eventsBox").textContent = "Connecting...";
+        eventSource = new EventSource("/api/events/?token=" + getToken());
+
+        eventSource.addEventListener("connected", function (event) {
+            document.getElementById("eventsBox").textContent = event.data;
+        });
+        eventSource.addEventListener("reservation.created", function (event) {
+            writeEvent("Created: " + event.data);
+        });
+        eventSource.addEventListener("reservation.updated", function (event) {
+            writeEvent("Updated: " + event.data);
+        });
+        eventSource.addEventListener("reservation.cancelled", function (event) {
+            writeEvent("Cancelled: " + event.data);
+        });
+        eventSource.addEventListener("reservation.status_changed", function (event) {
+            writeEvent("Status changed: " + event.data);
+        });
+    }
+
+    if (getToken()) {
+        connectEvents();
+    }
+</script>
+{% endblock %}

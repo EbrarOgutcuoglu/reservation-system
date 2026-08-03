@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Reservation System{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Login</h1>
+    <p>Enter your account and continue to your reservation dashboard.</p>
+</section>
+
+<section class="panel" style="max-width: 480px;">
+    <h2>Account Login</h2>
+    <label>Username</label>
+    <input id="username" autocomplete="username">
+
+    <label>Password</label>
+    <input id="password" type="password" autocomplete="current-password">
+
+    <div class="button-row">
+        <button class="btn" onclick="loginUser()">Login</button>
+        <a class="btn secondary" href="/register/">Create Account</a>
+    </div>
+    <div id="loginMessage" class="message"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loginUser() {
+        try {
+            const data = await apiFetch("/api/auth/login/", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    username: document.getElementById("username").value,
+                    password: document.getElementById("password").value
+                })
+            });
+            saveToken(data.token);
+            window.location.href = "/";
+        } catch (error) {
+            showMessage("loginMessage", error.message, "error");
+        }
+    }
+</script>
+{% endblock %}

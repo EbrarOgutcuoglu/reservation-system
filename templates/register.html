@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Reservation System{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Create Account</h1>
+    <p>Register as a user and start creating reservations.</p>
+</section>
+
+<section class="panel" style="max-width: 520px;">
+    <h2>New User</h2>
+    <label>Username</label>
+    <input id="username" autocomplete="username">
+
+    <label>Email</label>
+    <input id="email" type="email" autocomplete="email">
+
+    <label>Password</label>
+    <input id="password" type="password" autocomplete="new-password">
+
+    <div class="button-row">
+        <button class="btn" onclick="registerUser()">Register</button>
+        <a class="btn secondary" href="/login/">I Have Account</a>
+    </div>
+    <div id="registerMessage" class="message"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function registerUser() {
+        try {
+            const data = await apiFetch("/api/auth/register/", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    username: document.getElementById("username").value,
+                    email: document.getElementById("email").value,
+                    password: document.getElementById("password").value
+                })
+            });
+            saveToken(data.token);
+            window.location.href = "/";
+        } catch (error) {
+            showMessage("registerMessage", error.message, "error");
+        }
+    }
+</script>
+{% endblock %}

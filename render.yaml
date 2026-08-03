@@ -1,0 +1,20 @@
+databases:
+  - name: rezervem-db
+    databaseName: rezervem
+    user: rezervem
+
+services:
+  - type: web
+    name: rezervem
+    runtime: python
+    buildCommand: ./build.sh
+    startCommand: gunicorn online_reservation.wsgi:application
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rezervem-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: 1

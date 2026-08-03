@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}My Reservations - Rezervem{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>My Reservations</h1>
+    <p>You can view and cancel your restaurant reservations here.</p>
+</section>
+
+<section class="panel">
+    <div class="button-row">
+        <button class="btn" onclick="loadReservations()">Refresh</button>
+        <a class="btn secondary" href="/reservations/new/">New Reservation</a>
+    </div>
+    <div id="reservationMessage" class="message"></div>
+    <div id="reservationList" class="list" style="margin-top: 16px;"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function itemHtml(reservation) {
+        return `
+            <div class="item">
+                <div class="item-title">Rezervem Restaurant</div>
+                <div class="muted">${reservation.date} / ${reservation.time_range}</div>
+                <p>${reservation.note || ""}</p>
+                <span class="badge">${reservation.status}</span>
+                <div class="button-row">
+                    <button class="btn secondary" onclick="cancelReservation(${reservation.id})">Cancel</button>
+                </div>
+            </div>
+        `;
+    }
+
+    async function loadReservations() {
+        if (!requireLogin()) return;
+        try {
+            const data = await apiFetch("/api/reservations/", {headers: authHeaders()});
+            const activeReservations = data.reservations.filter(item => item.status !== "CANCELLED");
+            document.getElementById("reservationList").innerHTML = activeReservations.length
+                ? activeReservations.map(itemHtml).join("")
+                : "<p class='muted'>No reservations yet.</p>";
+        } catch (error) {
+            showMessage("reservationMessage", error.message, "error");
+        }
+    }
+
+    async function cancelReservation(id) {
+        try {
+            await apiFetch("/api/reservations/" + id + "/", {
+                method: "DELETE",
+                headers: authHeaders()
+            });
+            showMessage("reservationMessage", "Reservation cancelled.", "success");
+            loadReservations();
+        } catch (error) {
+            showMessage("reservationMessage", error.message, "error");
+        }
+    }
+
+    loadReservations();
+</script>
+{% endblock %}

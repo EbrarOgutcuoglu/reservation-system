@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Rezervem - Home{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Rezervem is waiting for you in the heart of Istanbul.</h1>
+    <p>Choose a date and time to create your restaurant reservation. Full time slots are closed automatically.</p>
+    <div class="button-row">
+        <a class="btn" href="/reservations/new/">Book a Table</a>
+        <a class="btn secondary" href="/reservations/">My Reservations</a>
+    </div>
+</section>
+
+<section class="grid">
+    <article class="panel">
+        <h2>Today’s Slots</h2>
+        <p class="muted">Available reservation times for today are listed below.</p>
+        <div id="todaySlots" class="slot-grid"></div>
+    </article>
+
+    <article class="panel">
+        <h2>My Latest Reservations</h2>
+        <p class="muted">Your latest reservations appear here after login.</p>
+        <div id="reservationList" class="list" style="margin-top: 16px;"></div>
+    </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function todayValue() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, "0");
+        const day = String(today.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
+
+    function formatDateTime(value) {
+        return new Date(value).toLocaleString("tr-TR", {
+            dateStyle: "medium",
+            timeStyle: "short"
+        });
+    }
+
+    function slotItem(slot) {
+        return `
+            <div class="slot-card ${slot.is_full ? "full" : ""}">
+                <strong>${slot.label}</strong>
+                <span>${slot.is_full ? "Full" : "Available"}</span>
+            </div>
+        `;
+    }
+
+    function reservationItem(reservation) {
+        return `
+            <div class="item">
+                <div class="item-title">Rezervem Restaurant</div>
+                <div>${reservation.date} / ${reservation.time_range}</div>
+                <span class="badge">${reservation.status}</span>
+            </div>
+        `;
+    }
+
+    async function loadTodaySlots() {
+        if (!requireLogin()) return;
+        const data = await apiFetch("/api/availability/?date=" + todayValue(), {headers: authHeaders()});
+        document.getElementById("todaySlots").innerHTML = data.slots.map(slotItem).join("");
+    }
+
+    async function loadReservations() {
+        if (!requireLogin()) return;
+        const data = await apiFetch("/api/reservations/", {headers: authHeaders()});
+        const activeReservations = data.reservations.filter(item => item.status !== "CANCELLED");
+        document.getElementById("reservationList").innerHTML = activeReservations.length
+            ? activeReservations.slice(0, 3).map(reservationItem).join("")
+            : "<p class='muted'>No reservations yet.</p>";
+    }
+
+    if (getToken()) {
+        loadTodaySlots();
+        loadReservations();
+    }
+</script>
+{% endblock %}
