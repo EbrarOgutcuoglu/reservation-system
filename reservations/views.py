@@ -49,6 +49,10 @@ def events_page(request):
     return render(request, "events.html")
 
 
+def manager_page(request):
+    return render(request, "manager.html")
+
+
 def api_home(request):
     if request.method != "GET":
         return api_error("Method is not allowed.", 405)

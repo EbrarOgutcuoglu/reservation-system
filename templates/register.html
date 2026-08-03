@@ -41,6 +41,7 @@
                 })
             });
             saveToken(data.token);
+            saveUser(data.user);
             window.location.href = "/";
         } catch (error) {
             showMessage("registerMessage", error.message, "error");

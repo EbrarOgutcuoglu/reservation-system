@@ -199,6 +199,17 @@
             background: white;
         }
 
+        .item.active-reservation {
+            background: #f4fbf6;
+            border-color: #ccebd6;
+        }
+
+        .item.cancelled-reservation {
+            background: #f5f5f5;
+            border-color: #dddddd;
+            color: #777777;
+        }
+
         .item-title {
             font-weight: 800;
             margin-bottom: 6px;
@@ -374,6 +385,7 @@
             <a href="/reservations/new/">Book a Table</a>
             <a href="/reservations/">My Reservations</a>
             <a href="/events/">Live Events</a>
+            <a href="/manager/" id="managerLink">Admin Panel</a>
             <a href="/login/" id="loginLink">Login</a>
             <a href="/register/" id="registerLink">Register</a>
             <button id="logoutButton" type="button" onclick="logoutUser()">Logout</button>
@@ -394,16 +406,32 @@
             updateNav();
         }
 
+        function saveUser(user) {
+            localStorage.setItem("reservationUser", JSON.stringify(user));
+            updateNav();
+        }
+
+        function getUser() {
+            try {
+                return JSON.parse(localStorage.getItem("reservationUser")) || {};
+            } catch (error) {
+                return {};
+            }
+        }
+
         function logoutUser() {
             localStorage.removeItem("reservationToken");
+            localStorage.removeItem("reservationUser");
             window.location.href = "/login/";
         }
 
         function updateNav() {
             const loggedIn = Boolean(getToken());
+            const isAdmin = getUser().role === "ADMIN";
             document.getElementById("logoutButton").style.display = loggedIn ? "inline-block" : "none";
             document.getElementById("loginLink").style.display = loggedIn ? "none" : "inline-block";
             document.getElementById("registerLink").style.display = loggedIn ? "none" : "inline-block";
+            document.getElementById("managerLink").style.display = isAdmin ? "inline-block" : "none";
         }
 
         function authHeaders() {

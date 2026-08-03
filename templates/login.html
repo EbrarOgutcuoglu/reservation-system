@@ -10,6 +10,12 @@
 
 <section class="panel" style="max-width: 480px;">
     <h2>Account Login</h2>
+    <label>Login Type</label>
+    <select id="loginType" onchange="fillLoginForm()">
+        <option value="USER" selected>User</option>
+        <option value="ADMIN">Admin</option>
+    </select>
+
     <label>Username</label>
     <input id="username" autocomplete="username">
 
@@ -37,10 +43,24 @@
                 })
             });
             saveToken(data.token);
-            window.location.href = "/";
+            saveUser(data.user);
+            window.location.href = data.user.role === "ADMIN" ? "/manager/" : "/";
         } catch (error) {
             showMessage("loginMessage", error.message, "error");
         }
     }
+
+    function fillLoginForm() {
+        const loginType = document.getElementById("loginType").value;
+        if (loginType === "ADMIN") {
+            document.getElementById("username").value = "admin";
+            document.getElementById("password").value = "Admin12345";
+        } else {
+            document.getElementById("username").value = "";
+            document.getElementById("password").value = "";
+        }
+    }
+
+    fillLoginForm();
 </script>
 {% endblock %}

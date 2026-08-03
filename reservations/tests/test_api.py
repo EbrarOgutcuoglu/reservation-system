@@ -14,16 +14,13 @@ class ReservationApiTests(TestCase):
             username="john",
             password="pass12345",
         )
-        self.admin = get_user_model().objects.create_user(
-            username="admin",
-            password="pass12345",
-            is_staff=True,
-        )
+        self.admin = get_user_model().objects.get(username="admin")
 
     def login(self, username="john"):
+        password = "Admin12345" if username == "admin" else "pass12345"
         response = self.client.post(
             "/api/auth/login/",
-            data=json.dumps({"username": username, "password": "pass12345"}),
+            data=json.dumps({"username": username, "password": password}),
             content_type="application/json",
         )
         return response.json()["token"]

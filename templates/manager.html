@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel - Rezervem{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Admin Reservations</h1>
+    <p>View all restaurant reservations and cancel them when needed.</p>
+</section>
+
+<section class="panel">
+    <div class="button-row">
+        <button class="btn" onclick="loadAllReservations()">Refresh</button>
+    </div>
+    <div id="managerMessage" class="message"></div>
+    <div id="adminReservationList" class="list" style="margin-top: 16px;"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function itemHtml(reservation) {
+        const cardClass = reservation.status === "CANCELLED"
+            ? "cancelled-reservation"
+            : "active-reservation";
+        return `
+            <div class="item ${cardClass}">
+                <div class="item-title">${reservation.user.username}</div>
+                <div><strong>Date:</strong> ${reservation.date}</div>
+                <div><strong>Time:</strong> ${reservation.time_range}</div>
+                <div><strong>Note:</strong> ${reservation.note || "-"}</div>
+                <span class="badge">${reservation.status}</span>
+                <div class="button-row">
+                    <button
+                        class="btn secondary"
+                        ${reservation.status === "CANCELLED" ? "disabled" : ""}
+                        onclick="cancelReservation(${reservation.id})"
+                    >Cancel Reservation</button>
+                </div>
+            </div>
+        `;
+    }
+
+    async function loadAllReservations() {
+        if (!requireLogin()) return;
+        if (getUser().role !== "ADMIN") {
+            showMessage("managerMessage", "Admin permission is required.", "error");
+            return;
+        }
+
+        try {
+            const data = await apiFetch("/api/admin/reservations/", {headers: authHeaders()});
+            document.getElementById("adminReservationList").innerHTML = data.reservations.length
+                ? data.reservations.map(itemHtml).join("")
+                : "<p class='muted'>No reservations yet.</p>";
+        } catch (error) {
+            showMessage("managerMessage", error.message, "error");
+        }
+    }
+
+    async function cancelReservation(id) {
+        try {
+            await apiFetch("/api/admin/reservations/" + id + "/status/", {
+                method: "PATCH",
+                headers: authHeaders(),
+                body: JSON.stringify({status: "CANCELLED"})
+            });
+            showMessage("managerMessage", "Reservation cancelled.", "success");
+            loadAllReservations();
+        } catch (error) {
+            showMessage("managerMessage", error.message, "error");
+        }
+    }
+
+    loadAllReservations();
+</script>
+{% endblock %}

@@ -26,6 +26,7 @@ urlpatterns = [
     path("reservations/", views.reservations_page),
     path("reservations/new/", views.new_reservation_page),
     path("events/", views.events_page),
+    path("manager/", views.manager_page),
     path("admin/", admin.site.urls),
     path("api/", include("reservations.urls")),
 ]
