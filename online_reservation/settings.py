@@ -79,6 +79,8 @@ WSGI_APPLICATION = "online_reservation.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("://"):
+    DATABASE_URL = f"postgresql{DATABASE_URL}"
 
 if DATABASE_URL:
     import dj_database_url
