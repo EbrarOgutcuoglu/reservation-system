@@ -128,6 +128,37 @@ class ReservationApiTests(TestCase):
         self.assertTrue(selected_slot["is_selected"])
         self.assertTrue(selected_slot["held_by_me"])
 
+    def test_user_can_release_selected_slot(self):
+        token = self.login()
+        payload = {
+            "date": "2026-08-03",
+            "slot": "15-18",
+        }
+
+        self.client.post(
+            "/api/holds/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            **self.auth_header(token),
+        )
+        release_response = self.client.post(
+            "/api/holds/release/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            **self.auth_header(token),
+        )
+        availability_response = self.client.get(
+            "/api/availability/?date=2026-08-03",
+            **self.auth_header(token),
+        )
+
+        released_slot = [
+            slot for slot in availability_response.json()["slots"]
+            if slot["key"] == "15-18"
+        ][0]
+        self.assertEqual(release_response.status_code, 200)
+        self.assertFalse(released_slot["is_selected"])
+
     def test_admin_can_change_reservation_status(self):
         token = self.login("admin")
         reservation = Reservation.objects.create(

@@ -171,6 +171,13 @@
     }
 
     async function selectSlot(slotKey) {
+        if (selectedSlot === slotKey) {
+            await releaseHold();
+            showMessage("reservationMessage", "Selected time was released.", "success");
+            loadAvailability();
+            return;
+        }
+
         try {
             const data = await apiFetch("/api/holds/", {
                 method: "POST",
