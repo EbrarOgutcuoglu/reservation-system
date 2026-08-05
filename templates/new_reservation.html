@@ -85,7 +85,7 @@
     let holdTimeout = null;
     let holdInterval = null;
     let holdExpiresAt = null;
-    let availabilityPollTimeout = null;
+    let reservationEvents = null;
     let availabilityRequestId = 0;
 
     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -411,24 +411,39 @@
         }
     }
 
-    function startAvailabilityPolling() {
-        if (availabilityPollTimeout || !getToken()) {
+    function connectReservationEvents() {
+        if (!getToken() || reservationEvents) {
             return;
         }
 
-        async function poll() {
-            availabilityPollTimeout = null;
-            if (document.visibilityState === "visible" && document.getElementById("timePane").classList.contains("active")) {
+        reservationEvents = new EventSource("/api/events/?token=" + getToken());
+        reservationEvents.addEventListener("slot.hold_created", refreshFromEvent);
+        reservationEvents.addEventListener("slot.hold_released", refreshFromEvent);
+        reservationEvents.addEventListener("reservation.created", refreshFromEvent);
+        reservationEvents.addEventListener("reservation.cancelled", refreshFromEvent);
+        reservationEvents.addEventListener("reservation.status_changed", refreshFromEvent);
+        reservationEvents.onerror = function () {
+            reservationEvents.close();
+            reservationEvents = null;
+            setTimeout(connectReservationEvents, 3000);
+        };
+    }
+
+    async function refreshFromEvent(event) {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.date === dateValue(selectedDate)) {
                 await loadAvailability();
             }
-            availabilityPollTimeout = setTimeout(poll, 7000);
+        } catch (error) {
+            loadAvailability();
         }
-
-        availabilityPollTimeout = setTimeout(poll, 7000);
     }
 
     window.addEventListener("beforeunload", function () {
-        clearTimeout(availabilityPollTimeout);
+        if (reservationEvents) {
+            reservationEvents.close();
+        }
         if (!selectedSlot) {
             return;
         }
@@ -447,7 +462,7 @@
     updateStepText();
     renderFallbackSlots();
     loadAvailability().finally(function () {
-        startAvailabilityPolling();
+        connectReservationEvents();
     });
 </script>
 {% endblock %}

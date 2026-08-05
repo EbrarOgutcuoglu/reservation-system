@@ -1,6 +1,5 @@
 import logging
 import queue
-import time
 
 from django.contrib.auth import authenticate, get_user_model
 from django.http import StreamingHttpResponse
@@ -272,10 +271,10 @@ def event_stream(request):
                 except queue.Empty:
                     # Keep connection alive for browsers.
                     yield ": heartbeat\n\n"
-                    time.sleep(1)
         finally:
             remove_client(client_queue)
 
     response = StreamingHttpResponse(stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
     return response
