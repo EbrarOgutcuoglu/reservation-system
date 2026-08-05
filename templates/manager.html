@@ -32,6 +32,11 @@
                 <span class="badge">${reservation.status}</span>
                 <div class="button-row">
                     <button
+                        class="btn"
+                        ${reservation.status === "CONFIRMED" || reservation.status === "CANCELLED" ? "disabled" : ""}
+                        onclick="confirmReservation(${reservation.id})"
+                    >Confirm Reservation</button>
+                    <button
                         class="btn secondary"
                         ${reservation.status === "CANCELLED" ? "disabled" : ""}
                         onclick="cancelReservation(${reservation.id})"
@@ -53,6 +58,20 @@
             document.getElementById("adminReservationList").innerHTML = data.reservations.length
                 ? data.reservations.map(itemHtml).join("")
                 : "<p class='muted'>No reservations yet.</p>";
+        } catch (error) {
+            showMessage("managerMessage", error.message, "error");
+        }
+    }
+
+    async function confirmReservation(id) {
+        try {
+            await apiFetch("/api/admin/reservations/" + id + "/status/", {
+                method: "PATCH",
+                headers: authHeaders(),
+                body: JSON.stringify({status: "CONFIRMED"})
+            });
+            showMessage("managerMessage", "Reservation confirmed.", "success");
+            loadAllReservations();
         } catch (error) {
             showMessage("managerMessage", error.message, "error");
         }

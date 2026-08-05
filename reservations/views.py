@@ -1,5 +1,4 @@
 import logging
-import queue
 
 from django.contrib.auth import authenticate, get_user_model
 from django.http import StreamingHttpResponse
@@ -7,7 +6,7 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
 from .auth import create_token
-from .events import add_client, format_sse, remove_client
+from .events import Empty, add_client, format_sse, remove_client
 from .models import Reservation, Resource
 from .permissions import admin_required, login_required
 from .serializers import reservation_to_dict, resource_to_dict, user_to_dict
@@ -268,7 +267,7 @@ def event_stream(request):
                 try:
                     message = client_queue.get(timeout=15)
                     yield format_sse(message)
-                except queue.Empty:
+                except Empty:
                     # Keep connection alive for browsers.
                     yield ": heartbeat\n\n"
         finally:

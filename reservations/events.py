@@ -1,6 +1,10 @@
 import json
-import queue
 import threading
+
+try:
+    from gevent.queue import Empty, Queue
+except ImportError:
+    from queue import Empty, Queue
 
 
 clients = []
@@ -8,7 +12,7 @@ clients_lock = threading.Lock()
 
 
 def add_client():
-    client_queue = queue.Queue()
+    client_queue = Queue()
     with clients_lock:
         clients.append(client_queue)
     return client_queue
