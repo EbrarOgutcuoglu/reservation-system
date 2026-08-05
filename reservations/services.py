@@ -266,4 +266,18 @@ def change_reservation_status(reservation, status):
 
 
 def publish_reservation_change(event_name, reservation):
-    publish_event(event_name, reservation_to_dict(reservation))
+    data = reservation_to_dict(reservation)
+    data["slot"] = get_slot_key_from_times(reservation.start_time, reservation.end_time)
+    publish_event(event_name, data)
+
+
+def get_slot_key_from_times(start_time, end_time):
+    local_start = timezone.localtime(start_time)
+    local_end = timezone.localtime(end_time)
+    start_hour = local_start.hour
+    end_hour = 24 if local_end.hour == 0 else local_end.hour
+
+    for slot in RESTAURANT_SLOTS:
+        if slot["start_hour"] == start_hour and slot["end_hour"] == end_hour:
+            return slot["key"]
+    return None

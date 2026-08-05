@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
 from reservations.models import Reservation, Resource
+from reservations.services import get_slot_key_from_times, get_slot_times
 
 
 class ReservationApiTests(TestCase):
@@ -158,6 +159,19 @@ class ReservationApiTests(TestCase):
         ][0]
         self.assertEqual(release_response.status_code, 200)
         self.assertFalse(released_slot["is_selected"])
+
+    def test_reservation_event_payload_has_slot_key(self):
+        start_time, end_time = get_slot_times("2026-08-03", "12-15")
+        reservation = Reservation.objects.create(
+            user=self.user,
+            resource=self.resource,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        slot_key = get_slot_key_from_times(reservation.start_time, reservation.end_time)
+
+        self.assertEqual(slot_key, "12-15")
 
     def test_admin_can_change_reservation_status(self):
         token = self.login("admin")

@@ -58,7 +58,7 @@
     let holdTimeout = null;
     let holdInterval = null;
     let holdExpiresAt = null;
-    let refreshInterval = null;
+    let reservationEvents = null;
 
     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const monthNames = [
@@ -309,6 +309,30 @@
         clearHoldTimer();
     }
 
+    function connectReservationEvents() {
+        if (!getToken() || reservationEvents) {
+            return;
+        }
+
+        reservationEvents = new EventSource("/api/events/?token=" + getToken());
+        reservationEvents.addEventListener("slot.hold_created", refreshFromEvent);
+        reservationEvents.addEventListener("slot.hold_released", refreshFromEvent);
+        reservationEvents.addEventListener("reservation.created", refreshFromEvent);
+        reservationEvents.addEventListener("reservation.cancelled", refreshFromEvent);
+        reservationEvents.addEventListener("reservation.status_changed", refreshFromEvent);
+    }
+
+    function refreshFromEvent(event) {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.date === dateValue(selectedDate)) {
+                loadAvailability();
+            }
+        } catch (error) {
+            loadAvailability();
+        }
+    }
+
     window.addEventListener("beforeunload", function () {
         if (!selectedSlot) {
             return;
@@ -326,10 +350,6 @@
     calendarDate = new Date(selectedDate);
     renderCalendar();
     updateStepText();
-    refreshInterval = setInterval(function () {
-        if (document.getElementById("timePane").classList.contains("active")) {
-            loadAvailability();
-        }
-    }, 10000);
+    connectReservationEvents();
 </script>
 {% endblock %}

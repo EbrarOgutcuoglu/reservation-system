@@ -49,6 +49,12 @@
         eventSource.addEventListener("reservation.status_changed", function (event) {
             writeEvent("Status changed: " + event.data);
         });
+        eventSource.addEventListener("slot.hold_created", function (event) {
+            writeEvent("Slot selected: " + event.data);
+        });
+        eventSource.addEventListener("slot.hold_released", function (event) {
+            writeEvent("Slot released: " + event.data);
+        });
     }
 
     if (getToken()) {
