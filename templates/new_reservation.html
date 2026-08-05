@@ -32,7 +32,7 @@
 
     <div id="timePane" class="wizard-pane">
         <h2 style="text-align: center;">Please select your reservation time.</h2>
-        <p class="muted" style="text-align: center;">Full or selected slots cannot be selected by another user.</p>
+        <p class="muted" style="text-align: center;">Unavailable times cannot be selected.</p>
         <p id="holdTimer" class="muted" style="text-align: center;"></p>
         <div id="slotList" class="slot-grid"></div>
 
@@ -163,9 +163,9 @@
             const statusText = slot.is_full
                 ? "Full"
                 : isMine
-                    ? "Your selection"
+                    ? "Chosen"
                     : isHeldByOther
-                        ? "Selected"
+                        ? "Unavailable"
                         : "Available";
 
             return `
@@ -186,7 +186,7 @@
     async function selectSlot(slotKey) {
         if (selectedSlot === slotKey) {
             await releaseHold();
-            showMessage("reservationMessage", "Selected time was released.", "success");
+            showMessage("reservationMessage", "Time choice was cleared.", "success");
             loadAvailability();
             return;
         }
@@ -203,7 +203,7 @@
             selectedSlot = slotKey;
             holdExpiresAt = new Date(data.hold.expires_at);
             startHoldTimer();
-            showMessage("reservationMessage", "This time is selected for 10 minutes.", "success");
+            showMessage("reservationMessage", "This time is reserved for you for 10 minutes.", "success");
             loadAvailability();
         } catch (error) {
             selectedSlot = "";
@@ -298,7 +298,7 @@
         const minutes = Math.floor(secondsLeft / 60);
         const seconds = String(secondsLeft % 60).padStart(2, "0");
         document.getElementById("holdTimer").textContent = selectedSlot
-            ? `Selected time expires in ${minutes}:${seconds}.`
+            ? `Your time choice expires in ${minutes}:${seconds}.`
             : "";
     }
 
