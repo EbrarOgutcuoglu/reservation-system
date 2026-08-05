@@ -34,7 +34,34 @@
         <h2 style="text-align: center;">Please select your reservation time.</h2>
         <p class="muted" style="text-align: center;">Unavailable times cannot be selected.</p>
         <p id="holdTimer" class="muted" style="text-align: center;"></p>
-        <div id="slotList" class="slot-grid"></div>
+        <div id="slotStatus" class="slot-status">Loading times...</div>
+        <div id="slotList" class="slot-grid">
+            <button class="slot-card" type="button" onclick="selectSlot('09-12')">
+                <span>1. Session</span>
+                <strong>09:00 - 12:00</strong>
+                <span>Checking...</span>
+            </button>
+            <button class="slot-card" type="button" onclick="selectSlot('12-15')">
+                <span>2. Session</span>
+                <strong>12:00 - 15:00</strong>
+                <span>Checking...</span>
+            </button>
+            <button class="slot-card" type="button" onclick="selectSlot('15-18')">
+                <span>3. Session</span>
+                <strong>15:00 - 18:00</strong>
+                <span>Checking...</span>
+            </button>
+            <button class="slot-card" type="button" onclick="selectSlot('18-21')">
+                <span>4. Session</span>
+                <strong>18:00 - 21:00</strong>
+                <span>Checking...</span>
+            </button>
+            <button class="slot-card" type="button" onclick="selectSlot('21-24')">
+                <span>5. Session</span>
+                <strong>21:00 - 00:00</strong>
+                <span>Checking...</span>
+            </button>
+        </div>
 
         <label>Note</label>
         <textarea id="note" placeholder="Optional note"></textarea>
@@ -64,6 +91,13 @@
     const monthNames = [
         "January", "February", "March", "April", "May", "June",
         "July", "August", "September", "October", "November", "December"
+    ];
+    const defaultSlots = [
+        {key: "09-12", label: "09:00 - 12:00"},
+        {key: "12-15", label: "12:00 - 15:00"},
+        {key: "15-18", label: "15:00 - 18:00"},
+        {key: "18-21", label: "18:00 - 21:00"},
+        {key: "21-24", label: "21:00 - 00:00"}
     ];
 
     function dateValue(date) {
@@ -156,21 +190,21 @@
 
     function renderSlots(slots) {
         latestSlots = slots;
+        document.getElementById("slotStatus").textContent = slots.length ? "" : "No reservation times were found.";
         document.getElementById("slotList").innerHTML = slots.map((slot, index) => {
-            const isMine = slot.held_by_me || selectedSlot === slot.key;
+            const isMine = slot.held_by_me || (selectedSlot === slot.key && !slot.is_full);
             const isHeldByOther = slot.is_selected && !slot.held_by_me;
+            const isSelected = isMine || isHeldByOther;
             const isDisabled = slot.is_full || isHeldByOther;
             const statusText = slot.is_full
-                ? "Full"
-                : isMine
-                    ? "Chosen"
-                    : isHeldByOther
-                        ? "Unavailable"
-                        : "Available";
+                ? slot.is_unavailable ? "Unavailable" : "Full"
+                : isSelected
+                    ? "Selected"
+                    : slot.status_text || "Available";
 
             return `
                 <button
-                    class="slot-card ${slot.is_full ? "full" : ""} ${isHeldByOther ? "held" : ""} ${isMine ? "selected" : ""}"
+                    class="slot-card ${slot.is_full ? "full" : ""} ${isHeldByOther ? "held" : ""} ${isSelected ? "selected" : ""}"
                     type="button"
                     ${isDisabled ? "disabled" : ""}
                     onclick="selectSlot('${slot.key}')"
@@ -181,6 +215,20 @@
                 </button>
             `;
         }).join("");
+    }
+
+    function renderCheckingSlots(message) {
+        renderSlots(defaultSlots.map(slot => ({
+            key: slot.key,
+            label: slot.label,
+            is_full: false,
+            is_unavailable: false,
+            is_selected: false,
+            held_by_me: false,
+            hold_expires_at: null,
+            status_text: "Checking..."
+        })));
+        document.getElementById("slotStatus").textContent = message || "Checking availability...";
     }
 
     async function selectSlot(slotKey) {
@@ -213,7 +261,13 @@
     }
 
     async function loadAvailability() {
-        if (!requireLogin()) return;
+        if (!getToken()) {
+            renderCheckingSlots("Please login to see live availability.");
+            document.getElementById("slotStatus").textContent = "Please login to see reservation times.";
+            return;
+        }
+
+        renderCheckingSlots("Loading times...");
         try {
             const data = await apiFetch("/api/availability/?date=" + dateValue(selectedDate), {
                 headers: authHeaders()
@@ -231,6 +285,8 @@
             renderSlots(data.slots);
             updateStepText();
         } catch (error) {
+            renderCheckingSlots("Times could not be loaded. Please login again.");
+            document.getElementById("slotStatus").textContent = "Times could not be loaded. Please login again.";
             showMessage("reservationMessage", error.message, "error");
         }
     }
@@ -364,5 +420,6 @@
     renderCalendar();
     updateStepText();
     connectReservationEvents();
+    loadAvailability();
 </script>
 {% endblock %}

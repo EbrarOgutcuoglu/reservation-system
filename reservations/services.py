@@ -74,6 +74,8 @@ def get_active_hold(date_value, slot_key):
 def hold_slot(user, date_value, slot_key):
     resource = get_restaurant_resource()
     start_time, end_time = get_slot_times(date_value, slot_key)
+    if slot_has_started(start_time):
+        raise ValueError("This time is no longer available.")
     if has_conflict(resource, start_time, end_time):
         raise ValueError("Reservation time conflicts with another reservation.")
 
@@ -108,7 +110,7 @@ def hold_slot(user, date_value, slot_key):
 
 def release_user_hold(user, date_value=None, slot_key=None):
     cleanup_expired_holds()
-    removed = False
+    removed_holds = []
     with slot_holds_lock:
         for key, hold in list(slot_holds.items()):
             same_user = hold["user_id"] == user.id
@@ -116,10 +118,10 @@ def release_user_hold(user, date_value=None, slot_key=None):
             same_slot = slot_key is None or hold["slot"] == slot_key
             if same_user and same_date and same_slot:
                 del slot_holds[key]
-                removed = True
+                removed_holds.append(hold)
 
-    if removed:
-        publish_event("slot.hold_released", {"date": date_value, "slot": slot_key})
+    for hold in removed_holds:
+        publish_event("slot.hold_released", {"date": hold["date"], "slot": hold["slot"]})
 
 
 def get_restaurant_resource():
@@ -158,12 +160,19 @@ def get_slot_times(date_value, slot_key):
     return start_time, end_time
 
 
+def slot_has_started(start_time):
+    local_start = timezone.localtime(start_time)
+    local_now = timezone.localtime(timezone.now())
+    return local_start.date() == local_now.date() and local_start <= local_now
+
+
 def get_restaurant_availability(date_value, user=None):
     resource = get_restaurant_resource()
     slots = []
     for slot in RESTAURANT_SLOTS:
         start_time, end_time = get_slot_times(date_value, slot["key"])
-        is_full = has_conflict(resource, start_time, end_time)
+        is_unavailable = slot_has_started(start_time)
+        is_full = is_unavailable or has_conflict(resource, start_time, end_time)
         active_hold = get_active_hold(date_value, slot["key"])
         held_by_me = bool(active_hold and user and active_hold["user_id"] == user.id)
         slots.append(
@@ -171,6 +180,7 @@ def get_restaurant_availability(date_value, user=None):
                 "key": slot["key"],
                 "label": slot["label"],
                 "is_full": is_full,
+                "is_unavailable": is_unavailable,
                 "is_selected": bool(active_hold) and not is_full,
                 "held_by_me": held_by_me,
                 "hold_expires_at": active_hold["expires_at"].isoformat() if active_hold else None,
@@ -192,6 +202,8 @@ def create_reservation(user, data):
         end_time = parse_time(data.get("end_time"), "end_time")
 
     validate_time_range(start_time, end_time)
+    if "date" in data and "slot" in data and slot_has_started(start_time):
+        raise ValueError("This time is no longer available.")
 
     # Lock resource row while checking availability.
     Resource.objects.select_for_update().get(id=resource.id)

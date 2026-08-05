@@ -243,6 +243,14 @@
             margin-top: 14px;
         }
 
+        .slot-status {
+            min-height: 22px;
+            margin-top: 12px;
+            color: var(--muted);
+            font-weight: 700;
+            text-align: center;
+        }
+
         .slot-card {
             border: 2px solid var(--line);
             border-radius: 8px;
@@ -268,6 +276,12 @@
             background: #fffbea;
             color: #6f5f00;
             cursor: not-allowed;
+        }
+
+        .slot-card.held.selected {
+            border-color: var(--primary);
+            background: #e7f5ef;
+            color: var(--text);
         }
 
         .slot-card.full {

@@ -1,15 +1,22 @@
 import json
+import queue
+from datetime import datetime
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
+from django.utils import timezone
 
+from reservations.events import add_client, remove_client
 from reservations.models import Reservation, Resource
-from reservations.services import get_slot_key_from_times, get_slot_times
+from reservations.services import get_slot_key_from_times, get_slot_times, slot_holds, slot_holds_lock
 
 
 class ReservationApiTests(TestCase):
     def setUp(self):
         self.client = Client()
+        with slot_holds_lock:
+            slot_holds.clear()
         self.resource = Resource.objects.create(name="Meeting Room")
         self.user = get_user_model().objects.create_user(
             username="john",
@@ -170,6 +177,61 @@ class ReservationApiTests(TestCase):
         ][0]
         self.assertEqual(release_response.status_code, 200)
         self.assertFalse(released_slot["is_selected"])
+
+    def test_started_today_slot_is_unavailable(self):
+        token = self.login()
+        current_time = timezone.make_aware(datetime(2026, 8, 5, 9, 1))
+
+        with patch("reservations.services.timezone.now", return_value=current_time):
+            response = self.client.get(
+                "/api/availability/?date=2026-08-05",
+                **self.auth_header(token),
+            )
+            hold_response = self.client.post(
+                "/api/holds/",
+                data=json.dumps({"date": "2026-08-05", "slot": "09-12"}),
+                content_type="application/json",
+                **self.auth_header(token),
+            )
+
+        slots = {slot["key"]: slot for slot in response.json()["slots"]}
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(slots["09-12"]["is_full"])
+        self.assertTrue(slots["09-12"]["is_unavailable"])
+        self.assertFalse(slots["12-15"]["is_full"])
+        self.assertEqual(hold_response.status_code, 400)
+
+    def test_switching_selected_slot_publishes_released_slot_details(self):
+        token = self.login()
+        first_payload = {"date": "2026-08-03", "slot": "12-15"}
+        second_payload = {"date": "2026-08-03", "slot": "15-18"}
+        self.client.post(
+            "/api/holds/",
+            data=json.dumps(first_payload),
+            content_type="application/json",
+            **self.auth_header(token),
+        )
+        client_queue = add_client()
+
+        try:
+            self.client.post(
+                "/api/holds/",
+                data=json.dumps(second_payload),
+                content_type="application/json",
+                **self.auth_header(token),
+            )
+            release_event = client_queue.get(timeout=1)
+            create_event = client_queue.get(timeout=1)
+        except queue.Empty:
+            self.fail("Expected slot switch events to be published.")
+        finally:
+            remove_client(client_queue)
+
+        self.assertEqual(release_event["event"], "slot.hold_released")
+        self.assertEqual(release_event["data"]["date"], "2026-08-03")
+        self.assertEqual(release_event["data"]["slot"], "12-15")
+        self.assertEqual(create_event["event"], "slot.hold_created")
+        self.assertEqual(create_event["data"]["slot"], "15-18")
 
     def test_reservation_event_payload_has_slot_key(self):
         start_time, end_time = get_slot_times("2026-08-03", "12-15")
