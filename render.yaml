@@ -8,7 +8,7 @@ services:
     name: rezervem
     runtime: python
     buildCommand: ./build.sh
-    startCommand: gunicorn online_reservation.wsgi:application --worker-class gthread --workers 2 --threads 8 --timeout 120
+    startCommand: uvicorn online_reservation.asgi:application --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
         fromDatabase:
