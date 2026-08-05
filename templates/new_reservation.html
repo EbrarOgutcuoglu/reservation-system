@@ -85,7 +85,7 @@
     let holdTimeout = null;
     let holdInterval = null;
     let holdExpiresAt = null;
-    let reservationEvents = null;
+    let availabilityPollTimeout = null;
     let availabilityRequestId = 0;
 
     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -411,31 +411,24 @@
         }
     }
 
-    function connectReservationEvents() {
-        if (!getToken() || reservationEvents) {
+    function startAvailabilityPolling() {
+        if (availabilityPollTimeout || !getToken()) {
             return;
         }
 
-        reservationEvents = new EventSource("/api/events/?token=" + getToken());
-        reservationEvents.addEventListener("slot.hold_created", refreshFromEvent);
-        reservationEvents.addEventListener("slot.hold_released", refreshFromEvent);
-        reservationEvents.addEventListener("reservation.created", refreshFromEvent);
-        reservationEvents.addEventListener("reservation.cancelled", refreshFromEvent);
-        reservationEvents.addEventListener("reservation.status_changed", refreshFromEvent);
-    }
-
-    function refreshFromEvent(event) {
-        try {
-            const data = JSON.parse(event.data);
-            if (data.date === dateValue(selectedDate)) {
-                loadAvailability();
+        async function poll() {
+            availabilityPollTimeout = null;
+            if (document.visibilityState === "visible" && document.getElementById("timePane").classList.contains("active")) {
+                await loadAvailability();
             }
-        } catch (error) {
-            loadAvailability();
+            availabilityPollTimeout = setTimeout(poll, 7000);
         }
+
+        availabilityPollTimeout = setTimeout(poll, 7000);
     }
 
     window.addEventListener("beforeunload", function () {
+        clearTimeout(availabilityPollTimeout);
         if (!selectedSlot) {
             return;
         }
@@ -454,7 +447,7 @@
     updateStepText();
     renderFallbackSlots();
     loadAvailability().finally(function () {
-        setTimeout(connectReservationEvents, 500);
+        startAvailabilityPolling();
     });
 </script>
 {% endblock %}
