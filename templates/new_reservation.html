@@ -142,10 +142,18 @@
         renderCalendar();
     }
 
-    async function selectDate(year, month, day) {
-        await releaseHold();
+    function selectDate(year, month, day) {
+        const previousDate = dateValue(selectedDate);
+        const previousSlot = selectedSlot;
+        if (previousSlot) {
+            releaseHold(previousDate, previousSlot, false);
+        }
+        availabilityRequestId++;
         selectedDate = new Date(year, month, day);
         selectedSlot = "";
+        holdExpiresAt = null;
+        clearHoldTimer();
+        renderFallbackSlots();
         updateStepText();
         renderCalendar();
         showPane("time");
@@ -379,8 +387,10 @@
             : "";
     }
 
-    async function releaseHold() {
-        if (!selectedSlot) {
+    async function releaseHold(dateToRelease, slotToRelease, clearSelection = true) {
+        const releaseDate = dateToRelease || dateValue(selectedDate);
+        const releaseSlot = slotToRelease || selectedSlot;
+        if (!releaseSlot) {
             return;
         }
         try {
@@ -388,15 +398,17 @@
                 method: "POST",
                 headers: authHeaders(),
                 body: JSON.stringify({
-                    date: dateValue(selectedDate),
-                    slot: selectedSlot
+                    date: releaseDate,
+                    slot: releaseSlot
                 })
             });
         } catch (error) {
         }
-        selectedSlot = "";
-        holdExpiresAt = null;
-        clearHoldTimer();
+        if (clearSelection && selectedSlot === releaseSlot && dateValue(selectedDate) === releaseDate) {
+            selectedSlot = "";
+            holdExpiresAt = null;
+            clearHoldTimer();
+        }
     }
 
     function connectReservationEvents() {
