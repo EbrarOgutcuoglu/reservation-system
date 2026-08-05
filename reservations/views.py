@@ -1,14 +1,16 @@
+import asyncio
 import logging
 
+from asgiref.sync import sync_to_async
 from django.contrib.auth import authenticate, get_user_model
 from django.http import StreamingHttpResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
 from .auth import create_token
-from .events import Empty, add_client, format_sse, remove_client
+from .events import add_async_client, format_sse, remove_client
 from .models import Reservation, Resource
-from .permissions import admin_required, login_required
+from .permissions import admin_required, get_authenticated_user, login_required
 from .serializers import reservation_to_dict, resource_to_dict, user_to_dict
 from .services import (
     cancel_reservation,
@@ -253,25 +255,30 @@ def admin_users(request):
     return api_response({"users": [user_to_dict(user) for user in users]})
 
 
-@login_required
-def event_stream(request):
+async def event_stream(request):
     if request.method != "GET":
         return api_error("Method is not allowed.", 405)
 
-    client_queue = add_client()
+    user = await sync_to_async(get_authenticated_user)(request)
+    if not user:
+        return api_error("Authentication token is missing or invalid.", 401)
 
-    def stream():
+    request.user = user
+    client = add_async_client()
+    client_queue = client["queue"]
+
+    async def stream():
         try:
             yield "event: connected\ndata: {\"message\": \"SSE connected\"}\n\n"
             while True:
                 try:
-                    message = client_queue.get(timeout=15)
+                    message = await asyncio.wait_for(client_queue.get(), timeout=15)
                     yield format_sse(message)
-                except Empty:
+                except asyncio.TimeoutError:
                     # Keep connection alive for browsers.
                     yield ": heartbeat\n\n"
         finally:
-            remove_client(client_queue)
+            remove_client(client)
 
     response = StreamingHttpResponse(stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import threading
 from queue import Empty, Queue
@@ -14,6 +15,17 @@ def add_client():
     return client_queue
 
 
+def add_async_client():
+    client_queue = asyncio.Queue()
+    client = {
+        "loop": asyncio.get_running_loop(),
+        "queue": client_queue,
+    }
+    with clients_lock:
+        clients.append(client)
+    return client
+
+
 def remove_client(client_queue):
     with clients_lock:
         if client_queue in clients:
@@ -28,8 +40,11 @@ def publish_event(event_name, data):
     with clients_lock:
         current_clients = list(clients)
 
-    for client_queue in current_clients:
-        client_queue.put(message)
+    for client in current_clients:
+        if isinstance(client, dict):
+            client["loop"].call_soon_threadsafe(client["queue"].put_nowait, message)
+        else:
+            client.put(message)
 
 
 def format_sse(message):
