@@ -107,6 +107,7 @@ class ReservationApiTests(TestCase):
         ][0]
         self.assertEqual(hold_response.status_code, 201)
         self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(first_response.json()["reservation"]["status"], "CONFIRMED")
         self.assertEqual(second_response.status_code, 400)
         self.assertTrue(full_slot["is_full"])
 

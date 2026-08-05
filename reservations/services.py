@@ -222,6 +222,7 @@ def create_reservation(user, data):
         resource=resource,
         start_time=start_time,
         end_time=end_time,
+        status=Reservation.Status.CONFIRMED,
         note=data.get("note", ""),
     )
     if "date" in data and "slot" in data:
