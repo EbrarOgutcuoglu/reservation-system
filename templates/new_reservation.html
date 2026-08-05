@@ -156,18 +156,31 @@
 
     function renderSlots(slots) {
         latestSlots = slots;
-        document.getElementById("slotList").innerHTML = slots.map((slot, index) => `
-            <button
-                class="slot-card ${slot.is_full ? "full" : ""} ${slot.is_selected && !slot.held_by_me ? "held" : ""} ${selectedSlot === slot.key || slot.held_by_me ? "selected" : ""}"
-                type="button"
-                ${slot.is_full || (slot.is_selected && !slot.held_by_me) ? "disabled" : ""}
-                onclick="selectSlot('${slot.key}')"
-            >
-                <span>${index + 1}. Session</span>
-                <strong>${slot.label}</strong>
-                <span>${slot.is_full ? "Full" : slot.is_selected ? "Selected" : "Available"}</span>
-            </button>
-        `).join("");
+        document.getElementById("slotList").innerHTML = slots.map((slot, index) => {
+            const isMine = slot.held_by_me || selectedSlot === slot.key;
+            const isHeldByOther = slot.is_selected && !slot.held_by_me;
+            const isDisabled = slot.is_full || isHeldByOther;
+            const statusText = slot.is_full
+                ? "Full"
+                : isMine
+                    ? "Your selection"
+                    : isHeldByOther
+                        ? "Selected"
+                        : "Available";
+
+            return `
+                <button
+                    class="slot-card ${slot.is_full ? "full" : ""} ${isHeldByOther ? "held" : ""} ${isMine ? "selected" : ""}"
+                    type="button"
+                    ${isDisabled ? "disabled" : ""}
+                    onclick="selectSlot('${slot.key}')"
+                >
+                    <span>${index + 1}. Session</span>
+                    <strong>${slot.label}</strong>
+                    <span>${statusText}</span>
+                </button>
+            `;
+        }).join("");
     }
 
     async function selectSlot(slotKey) {
