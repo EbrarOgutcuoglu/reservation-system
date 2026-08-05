@@ -34,32 +34,32 @@
         <h2 style="text-align: center;">Please select your reservation time.</h2>
         <p class="muted" style="text-align: center;">Unavailable times cannot be selected.</p>
         <p id="holdTimer" class="muted" style="text-align: center;"></p>
-        <div id="slotStatus" class="slot-status">Loading times...</div>
+        <div id="slotStatus" class="slot-status"></div>
         <div id="slotList" class="slot-grid">
             <button class="slot-card" type="button" onclick="selectSlot('09-12')">
                 <span>1. Session</span>
                 <strong>09:00 - 12:00</strong>
-                <span>Checking...</span>
+                <span>Available</span>
             </button>
             <button class="slot-card" type="button" onclick="selectSlot('12-15')">
                 <span>2. Session</span>
                 <strong>12:00 - 15:00</strong>
-                <span>Checking...</span>
+                <span>Available</span>
             </button>
             <button class="slot-card" type="button" onclick="selectSlot('15-18')">
                 <span>3. Session</span>
                 <strong>15:00 - 18:00</strong>
-                <span>Checking...</span>
+                <span>Available</span>
             </button>
             <button class="slot-card" type="button" onclick="selectSlot('18-21')">
                 <span>4. Session</span>
                 <strong>18:00 - 21:00</strong>
-                <span>Checking...</span>
+                <span>Available</span>
             </button>
             <button class="slot-card" type="button" onclick="selectSlot('21-24')">
                 <span>5. Session</span>
                 <strong>21:00 - 00:00</strong>
-                <span>Checking...</span>
+                <span>Available</span>
             </button>
         </div>
 
@@ -86,6 +86,7 @@
     let holdInterval = null;
     let holdExpiresAt = null;
     let reservationEvents = null;
+    let availabilityRequestId = 0;
 
     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const monthNames = [
@@ -217,7 +218,7 @@
         }).join("");
     }
 
-    function renderCheckingSlots(message) {
+    function renderFallbackSlots(message) {
         renderSlots(defaultSlots.map(slot => ({
             key: slot.key,
             label: slot.label,
@@ -226,9 +227,27 @@
             is_selected: false,
             held_by_me: false,
             hold_expires_at: null,
-            status_text: "Checking..."
+            status_text: "Available"
         })));
-        document.getElementById("slotStatus").textContent = message || "Checking availability...";
+        document.getElementById("slotStatus").textContent = message || "";
+    }
+
+    async function apiFetchWithTimeout(url, options, timeoutMs) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await apiFetch(url, {
+                ...(options || {}),
+                signal: controller.signal
+            });
+        } catch (error) {
+            if (error.name === "AbortError") {
+                throw new Error("Live availability is taking too long. You can still try selecting a time.");
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeout);
+        }
     }
 
     async function selectSlot(slotKey) {
@@ -262,16 +281,18 @@
 
     async function loadAvailability() {
         if (!getToken()) {
-            renderCheckingSlots("Please login to see live availability.");
-            document.getElementById("slotStatus").textContent = "Please login to see reservation times.";
+            renderFallbackSlots("Please login to see live availability.");
             return;
         }
 
-        renderCheckingSlots("Loading times...");
+        const requestId = ++availabilityRequestId;
         try {
-            const data = await apiFetch("/api/availability/?date=" + dateValue(selectedDate), {
+            const data = await apiFetchWithTimeout("/api/availability/?date=" + dateValue(selectedDate), {
                 headers: authHeaders()
-            });
+            }, 5000);
+            if (requestId !== availabilityRequestId) {
+                return;
+            }
             const selected = data.slots.find(slot => slot.key === selectedSlot);
             if (selected && (selected.is_full || (selected.is_selected && !selected.held_by_me))) {
                 selectedSlot = "";
@@ -285,9 +306,9 @@
             renderSlots(data.slots);
             updateStepText();
         } catch (error) {
-            renderCheckingSlots("Times could not be loaded. Please login again.");
-            document.getElementById("slotStatus").textContent = "Times could not be loaded. Please login again.";
-            showMessage("reservationMessage", error.message, "error");
+            if (requestId === availabilityRequestId) {
+                renderFallbackSlots(error.message);
+            }
         }
     }
 
@@ -419,7 +440,9 @@
     calendarDate = new Date(selectedDate);
     renderCalendar();
     updateStepText();
-    connectReservationEvents();
-    loadAvailability();
+    renderFallbackSlots();
+    loadAvailability().finally(function () {
+        setTimeout(connectReservationEvents, 500);
+    });
 </script>
 {% endblock %}
