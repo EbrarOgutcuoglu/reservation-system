@@ -1,10 +1,6 @@
 import json
 import threading
-
-try:
-    from gevent.queue import Empty, Queue
-except ImportError:
-    from queue import Empty, Queue
+from queue import Empty, Queue
 
 
 clients = []

@@ -8,7 +8,7 @@ services:
     name: rezervem
     runtime: python
     buildCommand: ./build.sh
-    startCommand: gunicorn online_reservation.wsgi:application --worker-class gevent --workers 1 --worker-connections 100 --timeout 120
+    startCommand: gunicorn online_reservation.wsgi:application --worker-class gthread --workers 2 --threads 8 --timeout 120
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -16,5 +16,3 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
-      - key: WEB_CONCURRENCY
-        value: 1
