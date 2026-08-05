@@ -149,9 +149,9 @@ def hold_reservation_slot(request):
         return api_response(
             {
                 "hold": {
-                    "date": hold["date"],
-                    "slot": hold["slot"],
-                    "expires_at": hold["expires_at"].isoformat(),
+                    "date": hold.date.isoformat(),
+                    "slot": hold.slot,
+                    "expires_at": hold.expires_at.isoformat(),
                 }
             },
             201,

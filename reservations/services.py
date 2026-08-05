@@ -1,14 +1,13 @@
 from datetime import datetime, time, timedelta
-from threading import Lock
-from uuid import uuid4
 
+from django.db import IntegrityError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.dateparse import parse_datetime
 
 from .events import publish_event
-from .models import Reservation, Resource
+from .models import Reservation, ReservationHold, Resource
 from .serializers import reservation_to_dict
 
 RESTAURANT_RESOURCE_NAME = "Rezervem Restaurant"
@@ -22,8 +21,6 @@ RESTAURANT_SLOTS = [
 ]
 
 HOLD_MINUTES = 10
-slot_holds = {}
-slot_holds_lock = Lock()
 
 
 def parse_time(value, field_name):
@@ -50,52 +47,52 @@ def has_conflict(resource, start_time, end_time, reservation_id=None):
     return reservations.exists()
 
 
-def _hold_key(date_value, slot_key):
-    return f"{date_value}:{slot_key}"
-
-
 def cleanup_expired_holds():
-    now = timezone.now()
-    with slot_holds_lock:
-        expired_keys = [
-            key for key, hold in slot_holds.items()
-            if hold["expires_at"] <= now
-        ]
-        for key in expired_keys:
-            del slot_holds[key]
+    ReservationHold.objects.filter(expires_at__lte=timezone.now()).delete()
 
 
 def get_active_hold(date_value, slot_key):
+    selected_date = parse_date(date_value or "")
+    if not selected_date:
+        return None
     cleanup_expired_holds()
-    with slot_holds_lock:
-        return slot_holds.get(_hold_key(date_value, slot_key))
+    return ReservationHold.objects.filter(date=selected_date, slot=slot_key).first()
 
 
+@transaction.atomic
 def hold_slot(user, date_value, slot_key):
     resource = get_restaurant_resource()
     start_time, end_time = get_slot_times(date_value, slot_key)
+    selected_date = parse_date(date_value or "")
     if slot_has_started(start_time):
         raise ValueError("This time is no longer available.")
     if has_conflict(resource, start_time, end_time):
         raise ValueError("Reservation time conflicts with another reservation.")
 
     cleanup_expired_holds()
-    key = _hold_key(date_value, slot_key)
     release_user_hold(user)
-    with slot_holds_lock:
-        current_hold = slot_holds.get(key)
-        if current_hold and current_hold["user_id"] != user.id:
-            raise ValueError("This time is currently selected by another user.")
+    current_hold = ReservationHold.objects.select_for_update().filter(
+        date=selected_date,
+        slot=slot_key,
+    ).first()
+    if current_hold and current_hold.user_id != user.id:
+        raise ValueError("This time is currently selected by another user.")
 
-        hold_id = current_hold["hold_id"] if current_hold else str(uuid4())
-        expires_at = timezone.now() + timedelta(minutes=HOLD_MINUTES)
-        slot_holds[key] = {
-            "hold_id": hold_id,
-            "user_id": user.id,
-            "date": date_value,
-            "slot": slot_key,
-            "expires_at": expires_at,
-        }
+    expires_at = timezone.now() + timedelta(minutes=HOLD_MINUTES)
+    if current_hold:
+        current_hold.expires_at = expires_at
+        current_hold.save(update_fields=["expires_at", "updated_at"])
+        hold = current_hold
+    else:
+        try:
+            hold = ReservationHold.objects.create(
+                user=user,
+                date=selected_date,
+                slot=slot_key,
+                expires_at=expires_at,
+            )
+        except IntegrityError as exc:
+            raise ValueError("This time is currently selected by another user.") from exc
 
     publish_event(
         "slot.hold_created",
@@ -105,23 +102,22 @@ def hold_slot(user, date_value, slot_key):
             "expires_at": expires_at.isoformat(),
         },
     )
-    return slot_holds[key]
+    return hold
 
 
 def release_user_hold(user, date_value=None, slot_key=None):
     cleanup_expired_holds()
-    removed_holds = []
-    with slot_holds_lock:
-        for key, hold in list(slot_holds.items()):
-            same_user = hold["user_id"] == user.id
-            same_date = date_value is None or hold["date"] == date_value
-            same_slot = slot_key is None or hold["slot"] == slot_key
-            if same_user and same_date and same_slot:
-                del slot_holds[key]
-                removed_holds.append(hold)
+    holds = ReservationHold.objects.filter(user=user)
+    if date_value is not None:
+        selected_date = parse_date(date_value or "")
+        holds = holds.filter(date=selected_date)
+    if slot_key is not None:
+        holds = holds.filter(slot=slot_key)
+    removed_holds = list(holds.values("date", "slot"))
+    holds.delete()
 
     for hold in removed_holds:
-        publish_event("slot.hold_released", {"date": hold["date"], "slot": hold["slot"]})
+        publish_event("slot.hold_released", {"date": hold["date"].isoformat(), "slot": hold["slot"]})
 
 
 def get_restaurant_resource():
@@ -174,7 +170,7 @@ def get_restaurant_availability(date_value, user=None):
         is_unavailable = slot_has_started(start_time)
         is_full = is_unavailable or has_conflict(resource, start_time, end_time)
         active_hold = get_active_hold(date_value, slot["key"])
-        held_by_me = bool(active_hold and user and active_hold["user_id"] == user.id)
+        held_by_me = bool(active_hold and user and active_hold.user_id == user.id)
         slots.append(
             {
                 "key": slot["key"],
@@ -183,7 +179,7 @@ def get_restaurant_availability(date_value, user=None):
                 "is_unavailable": is_unavailable,
                 "is_selected": bool(active_hold) and not is_full,
                 "held_by_me": held_by_me,
-                "hold_expires_at": active_hold["expires_at"].isoformat() if active_hold else None,
+                "hold_expires_at": active_hold.expires_at.isoformat() if active_hold else None,
             }
         )
     return slots
@@ -214,7 +210,7 @@ def create_reservation(user, data):
         active_hold = get_active_hold(data.get("date"), data.get("slot"))
         if not active_hold:
             raise ValueError("Please select this time again.")
-        if active_hold["user_id"] != user.id:
+        if active_hold.user_id != user.id:
             raise ValueError("This time is currently selected by another user.")
 
     reservation = Reservation.objects.create(

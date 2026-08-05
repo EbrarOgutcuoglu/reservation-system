@@ -8,15 +8,14 @@ from django.test import Client, TestCase
 from django.utils import timezone
 
 from reservations.events import add_client, remove_client
-from reservations.models import Reservation, Resource
-from reservations.services import get_slot_key_from_times, get_slot_times, slot_holds, slot_holds_lock
+from reservations.models import Reservation, ReservationHold, Resource
+from reservations.services import get_slot_key_from_times, get_slot_times
 
 
 class ReservationApiTests(TestCase):
     def setUp(self):
         self.client = Client()
-        with slot_holds_lock:
-            slot_holds.clear()
+        ReservationHold.objects.all().delete()
         self.resource = Resource.objects.create(name="Meeting Room")
         self.user = get_user_model().objects.create_user(
             username="john",
