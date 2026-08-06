@@ -32,19 +32,27 @@ def remove_client(client_queue):
             clients.remove(client_queue)
 
 
-def publish_event(event_name, data):
-    message = {
-        "event": event_name,
-        "data": data,
-    }
-    with clients_lock:
-        current_clients = list(clients)
+def publish_event(*args):
+    # Eğer 2 parametre geldiyse (event_type, data) birleştir, tek geldiyse olduğu gibi al
+    if len(args) == 1:
+        message = args[0]
+    else:
+        message = {"event": args[0], "data": args[1]}
 
-    for client in current_clients:
-        if isinstance(client, dict):
-            client["loop"].call_soon_threadsafe(client["queue"].put_nowait, message)
+    dead_clients = []
+    for client in clients:
+        loop = client.get("loop")
+        if loop and not loop.is_closed() and loop.is_running():
+            try:
+                loop.call_soon_threadsafe(client["queue"].put_nowait, message)
+            except RuntimeError:
+                dead_clients.append(client)
         else:
-            client.put(message)
+            dead_clients.append(client)
+
+    for dead in dead_clients:
+        if dead in clients:
+            clients.remove(dead)
 
 
 def format_sse(message):
