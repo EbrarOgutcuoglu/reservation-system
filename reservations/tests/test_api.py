@@ -136,6 +136,32 @@ class ReservationApiTests(TestCase):
         self.assertTrue(selected_slot["is_selected"])
         self.assertTrue(selected_slot["held_by_me"])
 
+    def test_other_users_selected_slot_is_not_marked_as_mine(self):
+        token = self.login()
+        other_user = get_user_model().objects.create_user(
+            username="mary",
+            password="pass12345",
+        )
+        ReservationHold.objects.create(
+            user=other_user,
+            date="2026-08-03",
+            slot="12-15",
+            expires_at=timezone.now() + timezone.timedelta(minutes=10),
+        )
+
+        response = self.client.get(
+            "/api/availability/?date=2026-08-03",
+            **self.auth_header(token),
+        )
+
+        selected_slot = [
+            slot for slot in response.json()["slots"]
+            if slot["key"] == "12-15"
+        ][0]
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(selected_slot["is_selected"])
+        self.assertFalse(selected_slot["held_by_me"])
+
     def test_empty_availability_has_no_selected_slots(self):
         token = self.login()
 

@@ -203,12 +203,14 @@
         document.getElementById("slotList").innerHTML = slots.map((slot, index) => {
             const isMine = slot.held_by_me || (selectedSlot === slot.key && !slot.is_full);
             const isHeldByOther = slot.is_selected && !slot.held_by_me;
-            const isSelected = isMine || isHeldByOther;
+            const isSelected = isMine;
             const isDisabled = slot.is_full || isHeldByOther;
             const statusText = slot.is_full
                 ? slot.is_unavailable ? "Unavailable" : "Full"
-                : isSelected
-                    ? "Selected"
+                : isMine
+                    ? "Selected by you"
+                    : isHeldByOther
+                        ? "Selected"
                     : slot.status_text || "Available";
 
             return `
