@@ -229,6 +229,11 @@
     }
 
     function renderFallbackSlots(message) {
+        if (latestSlots.length) {
+            renderSlots(latestSlots);
+            document.getElementById("slotStatus").textContent = message || "";
+            return;
+        }
         renderSlots(defaultSlots.map(slot => ({
             key: slot.key,
             label: slot.label,
@@ -281,6 +286,12 @@
             holdExpiresAt = new Date(data.hold.expires_at);
             startHoldTimer();
             showMessage("reservationMessage", "This time is reserved for you for 10 minutes.", "success");
+            renderSlots(latestSlots.map(slot => ({
+                ...slot,
+                is_selected: slot.key === slotKey ? true : slot.is_selected,
+                held_by_me: slot.key === slotKey ? true : false,
+                hold_expires_at: slot.key === slotKey ? data.hold.expires_at : slot.hold_expires_at
+            })));
             loadAvailability();
         } catch (error) {
             selectedSlot = "";
