@@ -1,14 +1,13 @@
-import asyncio
 import logging
+from queue import Empty
 
-from asgiref.sync import sync_to_async
 from django.contrib.auth import authenticate, get_user_model
 from django.http import StreamingHttpResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
 from .auth import create_token
-from .events import add_async_client, format_sse, remove_client
+from .events import add_client, format_sse, remove_client
 from .models import Reservation, Resource
 from .permissions import admin_required, get_authenticated_user, login_required
 from .serializers import reservation_to_dict, resource_to_dict, user_to_dict
@@ -257,19 +256,18 @@ def admin_users(request):
     return api_response({"users": [user_to_dict(user) for user in users]})
 
 
-async def event_stream(request):
+def event_stream(request):
     if request.method != "GET":
         return api_error("Method is not allowed.", 405)
 
-    user = await sync_to_async(get_authenticated_user)(request)
+    user = get_authenticated_user(request)
     if not user:
         return api_error("Authentication token is missing or invalid.", 401)
 
     request.user = user
-    client = add_async_client()
-    client_queue = client["queue"]
+    client_queue = add_client()
 
-    async def stream():
+    def stream():
         try:
             yield (
                 f"retry: {SSE_RETRY_MILLISECONDS}\n"
@@ -278,14 +276,12 @@ async def event_stream(request):
             )
             while True:
                 try:
-                    message = await asyncio.wait_for(client_queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
+                    message = client_queue.get(timeout=SSE_HEARTBEAT_SECONDS)
                     yield format_sse(message)
-                except asyncio.TimeoutError:
+                except Empty:
                     yield ": keep-alive\n\n"
-                except asyncio.CancelledError:
-                    break
         finally:
-            remove_client(client)
+            remove_client(client_queue)
 
     response = StreamingHttpResponse(stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"

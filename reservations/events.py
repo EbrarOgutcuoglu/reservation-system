@@ -1,8 +1,6 @@
-import asyncio
 import json
 import threading
 from queue import Empty, Queue
-
 
 clients = []
 clients_lock = threading.Lock()
@@ -15,17 +13,6 @@ def add_client():
     return client_queue
 
 
-def add_async_client():
-    client_queue = asyncio.Queue()
-    client = {
-        "loop": asyncio.get_running_loop(),
-        "queue": client_queue,
-    }
-    with clients_lock:
-        clients.append(client)
-    return client
-
-
 def remove_client(client_queue):
     with clients_lock:
         if client_queue in clients:
@@ -33,30 +20,27 @@ def remove_client(client_queue):
 
 
 def publish_event(*args):
-    # Eğer 2 parametre geldiyse (event_type, data) birleştir, tek geldiyse olduğu gibi al
+    """
+    Hem publish_event(message_dict) hem de
+    publish_event("hold_created", data) kullanımlarını destekler.
+    """
     if len(args) == 1:
-        message = args[0]
-    else:
-        message = {"event": args[0], "data": args[1]}
-
-    dead_clients = []
-    for client in clients:
-        loop = client.get("loop")
-        if loop and not loop.is_closed() and loop.is_running():
-            try:
-                loop.call_soon_threadsafe(client["queue"].put_nowait, message)
-            except RuntimeError:
-                dead_clients.append(client)
+        if isinstance(args[0], dict) and "event" in args[0]:
+            message = args[0]
         else:
-            dead_clients.append(client)
+            message = {"event": "message", "data": args[0]}
+    elif len(args) >= 2:
+        message = {"event": args[0], "data": args[1]}
+    else:
+        return
 
-    for dead in dead_clients:
-        if dead in clients:
-            clients.remove(dead)
+    with clients_lock:
+        # Bağlı olan tüm istemcilerin kuyruğuna mesajı ekle
+        for client_queue in list(clients):
+            client_queue.put(message)
 
 
 def format_sse(message):
-    return (
-        f"event: {message['event']}\n"
-        f"data: {json.dumps(message['data'])}\n\n"
-    )
+    event_name = message.get("event", "message")
+    data_content = message.get("data", {})
+    return f"event: {event_name}\ndata: {json.dumps(data_content)}\n\n"
