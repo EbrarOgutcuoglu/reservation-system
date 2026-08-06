@@ -24,8 +24,10 @@ from .utils import api_error, api_response, read_json
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-SSE_HEARTBEAT_SECONDS = 10
-SSE_RETRY_MILLISECONDS = 5000
+
+# Render/Gunicorn timeout'una takılmamak için 5 saniyede bir heartbeat (ping) gönderilir.
+SSE_HEARTBEAT_SECONDS = 5
+SSE_RETRY_MILLISECONDS = 3000
 
 
 def home(request):
@@ -70,8 +72,11 @@ def api_home(request):
             "protected_endpoints": [
                 "GET /api/profile/",
                 "GET /api/resources/",
+                "GET /api/availability/?date=YYYY-MM-DD",
                 "GET /api/reservations/",
                 "POST /api/reservations/",
+                "POST /api/holds/",
+                "POST /api/holds/release/",
                 "GET /api/events/?token=<JWT_TOKEN>",
             ],
         }
@@ -130,6 +135,7 @@ def resource_list(request):
 
 @login_required
 def availability(request):
+    """Tarih seçildiğinde restoran slot durumlarını (dolu/boş/hold) döner."""
     if request.method != "GET":
         return api_error("Method is not allowed.", 405)
 
@@ -143,6 +149,7 @@ def availability(request):
 @csrf_exempt
 @login_required
 def hold_reservation_slot(request):
+    """Kullanıcının seçtiği slotu 10 dakikalığına geçici kilitlemesini sağlar."""
     if request.method != "POST":
         return api_error("Method is not allowed.", 405)
 
@@ -166,6 +173,7 @@ def hold_reservation_slot(request):
 @csrf_exempt
 @login_required
 def release_reservation_hold(request):
+    """Kullanıcı seçimden vazgeçerse kilidi kaldırır."""
     if request.method != "POST":
         return api_error("Method is not allowed.", 405)
 
@@ -257,6 +265,7 @@ def admin_users(request):
 
 
 def event_stream(request):
+    """Gerçek zamanlı Server-Sent Events (SSE) akışı."""
     if request.method != "GET":
         return api_error("Method is not allowed.", 405)
 
@@ -269,6 +278,7 @@ def event_stream(request):
 
     def stream():
         try:
+            # İlk bağlantı sinyali
             yield (
                 f"retry: {SSE_RETRY_MILLISECONDS}\n"
                 "event: connected\n"
@@ -279,7 +289,14 @@ def event_stream(request):
                     message = client_queue.get(timeout=SSE_HEARTBEAT_SECONDS)
                     yield format_sse(message)
                 except Empty:
+                    # Kuyruk boş kaldıkça bağlantının düşmesini engelleyen keep-alive pingsi
                     yield ": keep-alive\n\n"
+                except Exception as exc:
+                    logger.error("SSE stream loop error: %s", exc)
+                    yield ": keep-alive\n\n"
+        except (GeneratorExit, OSError):
+            # İstemci sekmeyi kapattığında veya socket koptuğunda temiz çıkış
+            pass
         finally:
             remove_client(client_queue)
 
