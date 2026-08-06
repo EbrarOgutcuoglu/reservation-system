@@ -82,6 +82,7 @@
     let calendarDate = new Date();
     let selectedSlot = "";
     let latestSlots = [];
+    let latestSlotsDate = "";
     let holdTimeout = null;
     let holdInterval = null;
     let holdExpiresAt = null;
@@ -151,6 +152,8 @@
         availabilityRequestId++;
         selectedDate = new Date(year, month, day);
         selectedSlot = "";
+        latestSlots = [];
+        latestSlotsDate = "";
         holdExpiresAt = null;
         clearHoldTimer();
         renderFallbackSlots();
@@ -197,8 +200,9 @@
         document.getElementById("calendarGrid").innerHTML = html;
     }
 
-    function renderSlots(slots) {
+    function renderSlots(slots, slotsDate) {
         latestSlots = slots;
+        latestSlotsDate = slotsDate || dateValue(selectedDate);
         document.getElementById("slotStatus").textContent = slots.length ? "" : "No reservation times were found.";
         document.getElementById("slotList").innerHTML = slots.map((slot, index) => {
             const isMine = slot.held_by_me || (selectedSlot === slot.key && !slot.is_full);
@@ -229,8 +233,8 @@
     }
 
     function renderFallbackSlots(message) {
-        if (latestSlots.length) {
-            renderSlots(latestSlots);
+        if (latestSlots.length && latestSlotsDate === dateValue(selectedDate)) {
+            renderSlots(latestSlots, latestSlotsDate);
             document.getElementById("slotStatus").textContent = message || "";
             return;
         }
@@ -243,7 +247,7 @@
             held_by_me: false,
             hold_expires_at: null,
             status_text: "Available"
-        })));
+        })), dateValue(selectedDate));
         document.getElementById("slotStatus").textContent = message || "";
     }
 
@@ -291,7 +295,7 @@
                 is_selected: slot.key === slotKey ? true : slot.is_selected,
                 held_by_me: slot.key === slotKey ? true : false,
                 hold_expires_at: slot.key === slotKey ? data.hold.expires_at : slot.hold_expires_at
-            })));
+            })), dateValue(selectedDate));
             loadAvailability();
         } catch (error) {
             selectedSlot = "";
@@ -324,7 +328,7 @@
                 holdExpiresAt = new Date(myHold.hold_expires_at);
                 startHoldTimer();
             }
-            renderSlots(data.slots);
+            renderSlots(data.slots, dateValue(selectedDate));
             updateStepText();
         } catch (error) {
             if (requestId === availabilityRequestId) {

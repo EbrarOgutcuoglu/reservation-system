@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from reservations.events import add_client, remove_client
 from reservations.models import Reservation, ReservationHold, Resource
-from reservations.services import get_slot_key_from_times, get_slot_times
+from reservations.services import get_restaurant_resource, get_slot_key_from_times, get_slot_times
 
 
 class ReservationApiTests(TestCase):
@@ -161,6 +161,26 @@ class ReservationApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(selected_slot["is_selected"])
         self.assertFalse(selected_slot["held_by_me"])
+
+    def test_full_late_slot_does_not_leak_to_other_dates(self):
+        token = self.login()
+        start_time, end_time = get_slot_times("2026-08-03", "21-24")
+        Reservation.objects.create(
+            user=self.user,
+            resource=get_restaurant_resource(),
+            start_time=start_time,
+            end_time=end_time,
+            status=Reservation.Status.CONFIRMED,
+        )
+
+        response = self.client.get(
+            "/api/availability/?date=2026-08-04",
+            **self.auth_header(token),
+        )
+
+        slots = {slot["key"]: slot for slot in response.json()["slots"]}
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(slots["21-24"]["is_full"])
 
     def test_empty_availability_has_no_selected_slots(self):
         token = self.login()
