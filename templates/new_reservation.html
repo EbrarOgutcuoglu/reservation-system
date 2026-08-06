@@ -205,7 +205,7 @@
         latestSlotsDate = slotsDate || dateValue(selectedDate);
         document.getElementById("slotStatus").textContent = slots.length ? "" : "No reservation times were found.";
         document.getElementById("slotList").innerHTML = slots.map((slot, index) => {
-            const isMine = slot.held_by_me || (selectedSlot === slot.key && !slot.is_full);
+            const isMine = slot.held_by_me && !slot.is_full;
             const isHeldByOther = slot.is_selected && !slot.held_by_me;
             const isSelected = isMine;
             const isDisabled = slot.is_full || isHeldByOther;
@@ -232,13 +232,8 @@
         }).join("");
     }
 
-    function renderFallbackSlots(message) {
-        if (latestSlots.length && latestSlotsDate === dateValue(selectedDate)) {
-            renderSlots(latestSlots, latestSlotsDate);
-            document.getElementById("slotStatus").textContent = message || "";
-            return;
-        }
-        renderSlots(defaultSlots.map(slot => ({
+    function emptySlotState(slotsDate) {
+        return defaultSlots.map(slot => ({
             key: slot.key,
             label: slot.label,
             is_full: false,
@@ -247,7 +242,16 @@
             held_by_me: false,
             hold_expires_at: null,
             status_text: "Available"
-        })), dateValue(selectedDate));
+        }));
+    }
+
+    function renderFallbackSlots(message) {
+        if (latestSlots.length && latestSlotsDate === dateValue(selectedDate)) {
+            renderSlots(latestSlots, latestSlotsDate);
+            document.getElementById("slotStatus").textContent = message || "";
+            return;
+        }
+        renderSlots(emptySlotState(dateValue(selectedDate)), dateValue(selectedDate));
         document.getElementById("slotStatus").textContent = message || "";
     }
 
@@ -445,18 +449,26 @@
     }
 
     function applySlotEvent(eventName, data) {
-        if (!data.date || data.date !== dateValue(selectedDate) || !data.slot || !latestSlots.length) {
+        if (!data.date || data.date !== dateValue(selectedDate) || !data.slot) {
             return;
         }
 
         const currentUserId = getUser().id;
         const isMine = data.user_id && currentUserId && Number(data.user_id) === Number(currentUserId);
-        const nextSlots = latestSlots.map(slot => {
+        const currentSlots = latestSlotsDate === data.date && latestSlots.length
+            ? latestSlots
+            : emptySlotState(data.date);
+        const nextSlots = currentSlots.map(slot => {
             if (slot.key !== data.slot) {
                 return slot;
             }
 
             if (eventName === "slot.hold_created") {
+                if (isMine) {
+                    selectedSlot = data.slot;
+                    holdExpiresAt = data.expires_at ? new Date(data.expires_at) : holdExpiresAt;
+                    startHoldTimer();
+                }
                 return {
                     ...slot,
                     is_selected: !slot.is_full,
@@ -466,6 +478,11 @@
             }
 
             if (eventName === "slot.hold_released") {
+                if (isMine || selectedSlot === data.slot) {
+                    selectedSlot = "";
+                    holdExpiresAt = null;
+                    clearHoldTimer();
+                }
                 return {
                     ...slot,
                     is_selected: false,
@@ -505,10 +522,8 @@
             const data = JSON.parse(event.data);
             if (data.date === dateValue(selectedDate)) {
                 applySlotEvent(event.type, data);
-                loadAvailability();
             }
         } catch (error) {
-            loadAvailability();
         }
     }
 
