@@ -440,9 +440,7 @@
         reservationEvents.addEventListener("reservation.cancelled", refreshFromEvent);
         reservationEvents.addEventListener("reservation.status_changed", refreshFromEvent);
         reservationEvents.onerror = function () {
-            reservationEvents.close();
-            reservationEvents = null;
-            setTimeout(connectReservationEvents, 3000);
+            // The browser keeps this single EventSource and reconnects using the server retry value.
         };
     }
 

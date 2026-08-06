@@ -25,6 +25,8 @@ from .utils import api_error, api_response, read_json
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+SSE_HEARTBEAT_SECONDS = 10
+SSE_RETRY_MILLISECONDS = 5000
 
 
 def home(request):
@@ -269,14 +271,19 @@ async def event_stream(request):
 
     async def stream():
         try:
-            yield "event: connected\ndata: {\"message\": \"SSE connected\"}\n\n"
+            yield (
+                f"retry: {SSE_RETRY_MILLISECONDS}\n"
+                "event: connected\n"
+                "data: {\"message\": \"SSE connected\"}\n\n"
+            )
             while True:
                 try:
-                    message = await asyncio.wait_for(client_queue.get(), timeout=15)
+                    message = await asyncio.wait_for(client_queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
                     yield format_sse(message)
                 except asyncio.TimeoutError:
-                    # Keep connection alive for browsers.
-                    yield ": heartbeat\n\n"
+                    yield ": keep-alive\n\n"
+                except asyncio.CancelledError:
+                    break
         finally:
             remove_client(client)
 
