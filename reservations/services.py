@@ -99,6 +99,7 @@ def hold_slot(user, date_value, slot_key):
         {
             "date": date_value,
             "slot": slot_key,
+            "user_id": user.id,
             "expires_at": expires_at.isoformat(),
         },
     )
@@ -117,7 +118,14 @@ def release_user_hold(user, date_value=None, slot_key=None):
     holds.delete()
 
     for hold in removed_holds:
-        publish_event("slot.hold_released", {"date": hold["date"].isoformat(), "slot": hold["slot"]})
+        publish_event(
+            "slot.hold_released",
+            {
+                "date": hold["date"].isoformat(),
+                "slot": hold["slot"],
+                "user_id": user.id,
+            },
+        )
 
 
 def get_restaurant_resource():

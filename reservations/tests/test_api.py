@@ -276,8 +276,10 @@ class ReservationApiTests(TestCase):
         self.assertEqual(release_event["event"], "slot.hold_released")
         self.assertEqual(release_event["data"]["date"], "2026-08-03")
         self.assertEqual(release_event["data"]["slot"], "12-15")
+        self.assertEqual(release_event["data"]["user_id"], self.user.id)
         self.assertEqual(create_event["event"], "slot.hold_created")
         self.assertEqual(create_event["data"]["slot"], "15-18")
+        self.assertEqual(create_event["data"]["user_id"], self.user.id)
 
     def test_reservation_event_payload_has_slot_key(self):
         start_time, end_time = get_slot_times("2026-08-03", "12-15")

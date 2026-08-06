@@ -444,11 +444,68 @@
         };
     }
 
+    function applySlotEvent(eventName, data) {
+        if (!data.date || data.date !== dateValue(selectedDate) || !data.slot || !latestSlots.length) {
+            return;
+        }
+
+        const currentUserId = getUser().id;
+        const isMine = data.user_id && currentUserId && Number(data.user_id) === Number(currentUserId);
+        const nextSlots = latestSlots.map(slot => {
+            if (slot.key !== data.slot) {
+                return slot;
+            }
+
+            if (eventName === "slot.hold_created") {
+                return {
+                    ...slot,
+                    is_selected: !slot.is_full,
+                    held_by_me: Boolean(isMine) && !slot.is_full,
+                    hold_expires_at: data.expires_at || slot.hold_expires_at
+                };
+            }
+
+            if (eventName === "slot.hold_released") {
+                return {
+                    ...slot,
+                    is_selected: false,
+                    held_by_me: false,
+                    hold_expires_at: null
+                };
+            }
+
+            if (eventName === "reservation.created" || eventName === "reservation.status_changed") {
+                const isCancelled = data.status === "CANCELLED";
+                return {
+                    ...slot,
+                    is_full: !isCancelled,
+                    is_selected: false,
+                    held_by_me: false,
+                    hold_expires_at: null
+                };
+            }
+
+            if (eventName === "reservation.cancelled") {
+                return {
+                    ...slot,
+                    is_full: false,
+                    is_unavailable: false
+                };
+            }
+
+            return slot;
+        });
+
+        renderSlots(nextSlots, data.date);
+        updateStepText();
+    }
+
     async function refreshFromEvent(event) {
         try {
             const data = JSON.parse(event.data);
             if (data.date === dateValue(selectedDate)) {
-                await loadAvailability();
+                applySlotEvent(event.type, data);
+                loadAvailability();
             }
         } catch (error) {
             loadAvailability();
